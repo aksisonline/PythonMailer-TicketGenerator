@@ -1,4 +1,5 @@
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 import os
 from jinja2 import Environment, FileSystemLoader
 from dotenv import load_dotenv
@@ -116,6 +117,14 @@ for row in rows:
         image.add_header("Content-ID", "<template>")
         image.add_header("Content-Disposition", "inline", filename=os.path.basename(qr_ticket))
         msg.attach(image)
+
+    # Attach PDF File
+    pdf_file_path = "example.pdf"
+
+    with open(pdf_file_path, "rb") as pdf_file:
+        pdf_attachment = MIMEApplication(pdf_file.read())
+        pdf_attachment.add_header("Content-Disposition", "attachment", filename="example.pdf")
+        msg.attach(pdf_attachment)
 
     # Send email
     email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
