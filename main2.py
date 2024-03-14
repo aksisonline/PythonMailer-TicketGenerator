@@ -135,6 +135,7 @@ def send_bulk_emails():
         # Add the email to the sent_emails dictionary
         sent_emails[recipient_data["recipient_email"]] = hashed_email
         print("Mail sent to", recipient_data["recipient_email"])
+        cur.execute(f"UPDATE {table_name} SET comment = %s WHERE email = %s", ("Mail Sent", recipient_data["recipient_email"]))
 
     print("All Mails Sent!")
 
@@ -238,6 +239,7 @@ def send_individual_email(name, email):
     email_sender.send_email(email, msg)
     email_sender.close()
     print(f"Mail sent to {email}")
+    cur.execute(f"UPDATE {table_name} SET comment = %s WHERE email = %s", ("Mail Sent", email))
 
     # Close the cursor and the connection
     cur.close()
