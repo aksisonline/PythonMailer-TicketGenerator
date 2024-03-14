@@ -10,6 +10,7 @@ import psycopg2
 from email_sender import EmailSender
 from ssh_tunnel_manager import SSHTunnelManager
 from variables_mapping import column_mapping
+from qr_generator import generate_qr_code
 
 # Load environment variables from .env file
 load_dotenv()
@@ -95,20 +96,8 @@ for row in rows:
     msg.attach(MIMEText(html_content, "html"))
 
     # Generate QR code image
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4, 
-        
-    )
-    qr.add_data(hashed_email)
-    qr.make(fit=True)
-    qr_img = qr.make_image(fill_color="black", back_color="white")
-
-    # Save QR code image to a temporary file
-    qr_img_path = "qr_code.png"
-    qr_img.save(qr_img_path)
+    qr_img_path = f"qr_code.png"
+    generate_qr_code(hashed_email, qr_img_path)
 
     # Attach the QR code image as File
     with open(qr_img_path, "rb") as f:
