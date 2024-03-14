@@ -11,6 +11,7 @@ from email_sender import EmailSender
 from ssh_tunnel_manager import SSHTunnelManager
 from variables_mapping import column_mapping
 from qr_generator import generate_qr_code
+from ticket_editor import qr_barbie
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,7 +60,7 @@ cur = conn.cursor()
 # Load the template environment
 template_dir = os.path.dirname(__file__)
 env = Environment(loader=FileSystemLoader(template_dir))
-template = env.get_template("CCTicket.html")
+template = env.get_template(os.getenv("HTML_TEMPLATE"))
 
 # Create an empty dictionary to store emails and their hash_data
 sent_emails = {}
@@ -76,16 +77,17 @@ for row in rows:
     recipient_data = dict(zip(column_mapping.values(), row))
     recipient_data["recipient_txn_id"] = recipient_data["recipient_txn_id"][11:]
 
+
+
     # Encrypt recipient_email using SHA-256
     hashed_email = hashlib.sha256(recipient_data["recipient_email"].encode()).hexdigest()
 
     # Update the 'hash_data' column in the specified table
-    cur.execute(f"UPDATE {table_name} SET hash_mail = %s WHERE email = %s", (hashed_email, recipient_data["recipient_email"]))
+    #cur.execute(f"UPDATE {table_name} SET hash_mail = %s WHERE email = %s", (hashed_email, recipient_data["recipient_email"]))
     conn.commit()
 
     # Render the HTML template with the recipient's data
     html_content = template.render(**{k: recipient_data[column_mapping[k]] for k in column_mapping})
-
 
     # Create message container
     msg = MIMEMultipart()
@@ -98,20 +100,21 @@ for row in rows:
     # Generate QR code image
     qr_img_path = f"qr_code.png"
     generate_qr_code(hashed_email, qr_img_path)
+    
+    qr_ticket = qr_barbie(qr_img_path)
 
     # Attach the QR code image as File
-    with open(qr_img_path, "rb") as f:
+    with open(qr_ticket, "rb") as f:
         qr_code = MIMEImage(f.read())
         qr_code.add_header("Content-Disposition", "attachment", filename=f"qr_code_{recipient_data['recipient_name']}.png")
         msg.attach(qr_code)
 
     # Attach the image as Embed
-    image_path = qr_img_path
-    with open(image_path, "rb") as f:
+    with open(qr_ticket, "rb") as f:
         image_data = f.read()
         image = MIMEImage(image_data)
-        image.add_header("Content-ID", "<logo>")
-        image.add_header("Content-Disposition", "inline", filename=os.path.basename(image_path))
+        image.add_header("Content-ID", "<template>")
+        image.add_header("Content-Disposition", "inline", filename=os.path.basename(qr_ticket))
         msg.attach(image)
 
     # Send email
