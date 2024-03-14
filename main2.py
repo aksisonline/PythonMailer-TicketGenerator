@@ -242,7 +242,6 @@ def send_individual_email(name, email):
     # Close the cursor and the connection
     cur.close()
     conn.close()
-    print("Database connection closed")
 
 # If executed as a script, run the individual email sending logic
 if __name__ == "__main__":
