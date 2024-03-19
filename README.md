@@ -27,6 +27,7 @@ SSH_USERNAME=
 SSH_PASSWORD=
 
 SUBJECT=Your Ticket is here!
+HTML_TEMPLATE = TicketTemplate.html
 ```
 
 This code is an email automation script that fetches data from a PostgreSQL database, generates a QR code for each recipient, and sends a personalized email with the QR code attached. Here's a breakdown of the code:
