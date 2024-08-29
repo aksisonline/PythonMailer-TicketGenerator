@@ -65,7 +65,7 @@ def send_email_to_recipient(recipient_data, template, conn, cur, sent_emails):
     
     try:
         # Encrypt recipient_uniqueID using SHA-256
-        hash_data = hashlib.sha256(recipient_data["recipient_uniqueID"].encode()).hexdigest()
+        hash_data = recipient_data["recipient_uniqueID"]
 
         # Update the 'hash_data' column in the specified table
         cur.execute(f"UPDATE {table_name} SET hash_data = %s WHERE email = %s", (hash_data, recipient_data["recipient_email"]))
@@ -280,7 +280,3 @@ if __name__ == "__main__":
         send_individual_email(args.name, args.email)
     else:
         print("Please specify either --send_bulk or both --name and --email.")
-        
-    # Delete QR code image and ticket image after execution
-    os.remove(f'qr_code.png')
-    os.remove(f'qr_ticket.png')

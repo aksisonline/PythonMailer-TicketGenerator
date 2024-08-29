@@ -1,8 +1,12 @@
 /Original
 /__pycache__
 guidelines.pdf
+
 /py_mailer/.env
 /py_mailer/email_logs.log
+/py_mailer/qr_code.png
+/py_mailer/qr_ticket.png
+
 test.py
 list1.csv
 list1_with_codes.csv
