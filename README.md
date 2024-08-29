@@ -61,3 +61,12 @@ This code is an email automation script that fetches data from a PostgreSQL data
 7. Close the cursor and the database connection.
 
 This script is useful for sending personalized emails with unique QR codes to a list of recipients stored in a PostgreSQL database. The QR code contains the recipient's hashed email, which can be used for verification or tracking purposes.
+
+
+## Database Settings
+
+Items to be fetched from PostgreSQL server:
+
+* name
+* email
+* hash_data

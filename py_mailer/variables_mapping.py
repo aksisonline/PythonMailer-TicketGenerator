@@ -1,8 +1,9 @@
 # variables_mapping.py
+# DBCOL : HTML
 
 column_mapping = {
     'name': 'recipient_name',
     'email': 'recipient_email',
-    'cnf_id': 'recipient_txn_id',
-    'acc_type': 'recipient_acc_type'
+    'uniqueID': 'recipient_uniqueID',
+    'type': 'recipient_acc_type'
 }

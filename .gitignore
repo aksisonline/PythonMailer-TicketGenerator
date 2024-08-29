@@ -2,3 +2,6 @@
 /__pycache__
 guidelines.pdf
 /py_mailer/.env
+test.py
+list1.csv
+list1_with_codes.csv
