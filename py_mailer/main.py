@@ -280,3 +280,7 @@ if __name__ == "__main__":
         send_individual_email(args.name, args.email)
     else:
         print("Please specify either --send_bulk or both --name and --email.")
+        
+    # Delete QR code image and ticket image after execution
+    os.remove(f'qr_code.png')
+    os.remove(f'qr_ticket.png')
