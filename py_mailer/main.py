@@ -1,11 +1,12 @@
-from email.mime.multipart import MIMEMultipart
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 import os
 import argparse
 from jinja2 import Environment, FileSystemLoader
 from dotenv import load_dotenv
-from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 import hashlib
 import psycopg2
 from email_sender import EmailSender
@@ -13,9 +14,26 @@ from ssh_tunnel_manager import SSHTunnelManager
 from variables_mapping import column_mapping
 from qr_generator import generate_qr_code
 from ticket_editor import qr_barbie
+import logging
+from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Create a logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create a file handler and set the log file path
+log_file = "email_logs.log"
+file_handler = logging.FileHandler(log_file)
+
+# Create a formatter and set the format of log messages
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add the file handler to the logger
+logger.addHandler(file_handler)
 
 # SMTP server configuration
 smtp_server = os.getenv("server")
@@ -41,49 +59,16 @@ table_name = os.getenv("TABLE_NAME")
 # Other Info
 subject = os.getenv("SUBJECT")
 
-def send_bulk_emails():
-
-    # Create an SSH tunnel to the PostgreSQL server
-    if use_ssh_tunnel:
-        ssh_tunnel_manager = SSHTunnelManager(ssh_host, ssh_port, ssh_username, ssh_password, db_host, db_port)
-        ssh_tunnel_manager.create_tunnel()
-
-    # Connect to the PostgreSQL database through the SSH tunnel
-    conn = psycopg2.connect(
-        database=db_name,
-        user=db_user,
-        password=db_password,
-        host=db_host,
-        port=db_port
-    )
-
-    # Create a cursor object using the connection
-    cur = conn.cursor()
-
-    # Load the template environment
-    template_dir = os.path.dirname(__file__)
-    env = Environment(loader=FileSystemLoader(template_dir))
-    template = env.get_template(os.getenv("HTML_TEMPLATE"))
-
-    # Create an empty dictionary to store emails and their hash_data
-    sent_emails = {}
-
-    # Execute a query to fetch columns from the specified table
-    columns = ', '.join([f"{key} AS {value}" for key, value in column_mapping.items()])
-    cur.execute(f"SELECT {columns} FROM {table_name} WHERE hash_data IS NULL")
-
-    # Fetch all rows from the result set
-    rows = cur.fetchall()
-
-    # Iterate over the rows and process each recipient
-    for row in rows:
-        recipient_data = dict(zip(column_mapping.values(), row))
-
+def send_email_to_recipient(recipient_data, template, conn, cur, sent_emails):
+    # Prepare email sender
+    email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
+    
+    try:
         # Encrypt recipient_uniqueID using SHA-256
         hash_data = hashlib.sha256(recipient_data["recipient_uniqueID"].encode()).hexdigest()
 
         # Update the 'hash_data' column in the specified table
-        cur.execute(f"UPDATE {table_name} SET hash_data = %s WHERE email = %s", (hash_data, recipient_data["recipient_uniqueID"]))
+        cur.execute(f"UPDATE {table_name} SET hash_data = %s WHERE email = %s", (hash_data, recipient_data["recipient_email"]))
         conn.commit()
 
         # Render the HTML template with the recipient's data
@@ -117,25 +102,74 @@ def send_bulk_emails():
             image.add_header("Content-Disposition", "inline", filename=os.path.basename(qr_ticket))
             msg.attach(image)
 
-        # Attach PDF File
-        pdf_file_path = "guidelines_c.pdf"
+        # # Attach PDF File
+        # pdf_file_path = "guidelines_c.pdf"
 
-        with open(pdf_file_path, "rb") as pdf_file:
-            pdf_attachment = MIMEApplication(pdf_file.read())
-            pdf_attachment.add_header("Content-Disposition", "attachment", filename="Guidelines.pdf")
-            msg.attach(pdf_attachment)
+        # with open(pdf_file_path, "rb") as pdf_file:
+        #     pdf_attachment = MIMEApplication(pdf_file.read())
+        #     pdf_attachment.add_header("Content-Disposition", "attachment", filename="Guidelines.pdf")
+        #     msg.attach(pdf_attachment)
 
         # Send email
-        email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
         email_sender.send_email(recipient_data["recipient_email"], msg)
-        email_sender.close()
+
+        # Log the message
+        logger.info("Mail sent to {}".format(recipient_data["recipient_email"]))
 
         # Add the email to the sent_emails dictionary
         sent_emails[recipient_data["recipient_email"]] = hash_data
-        print("Mail sent to", recipient_data["recipient_email"])
         cur.execute(f"UPDATE {table_name} SET comment = %s WHERE email = %s", ("Mail Sent", recipient_data["recipient_email"]))
 
-    print("All Mails Sent!")
+    except Exception as e:
+        print(f"Error sending mail to {recipient_data['recipient_email']}: {e}")
+
+def send_bulk_emails():
+    # Create an SSH tunnel to the PostgreSQL server
+    if use_ssh_tunnel:
+        ssh_tunnel_manager = SSHTunnelManager(ssh_host, ssh_port, ssh_username, ssh_password, db_host, db_port)
+        ssh_tunnel_manager.create_tunnel()
+
+    # Connect to the PostgreSQL database through the SSH tunnel
+    conn = psycopg2.connect(
+        database=db_name,
+        user=db_user,
+        password=db_password,
+        host=db_host,
+        port=db_port
+    )
+
+    # Create a cursor object using the connection
+    cur = conn.cursor()
+
+    # Load the template environment
+    template_dir = os.path.dirname(__file__)
+    env = Environment(loader=FileSystemLoader(template_dir))
+    template = env.get_template(os.getenv("HTML_TEMPLATE"))
+
+    # Create an empty dictionary to store emails and their hash_data
+    sent_emails = {}
+
+    # Execute a query to fetch columns from the specified table
+    columns = ', '.join([f"{key} AS {value}" for key, value in column_mapping.items()])
+    cur.execute(f"SELECT {columns} FROM {table_name} WHERE hash_data IS NULL")
+
+    # Fetch all rows from the result set
+    rows = cur.fetchall()
+
+    # Use ThreadPoolExecutor to send emails concurrently
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Initialize the progress bar
+        with tqdm(total=len(rows), desc="Sending Emails", unit="email") as pbar:
+            futures = []
+            for row in rows:
+                recipient_data = dict(zip(column_mapping.values(), row))
+                future = executor.submit(send_email_to_recipient, recipient_data, template, conn, cur, sent_emails)
+                futures.append(future)
+
+            # Wait for all futures to complete and update progress bar
+            for future in as_completed(futures):
+                future.result()
+                pbar.update(1)
 
     # Close the cursor and the connection
     cur.close()
@@ -150,15 +184,6 @@ def send_bulk_emails():
         ssh_tunnel_manager.close_tunnel()
 
 def send_individual_email(name, email):
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.image import MIMEImage
-    from email_sender import EmailSender
-    from dotenv import load_dotenv
-    import os
-    import psycopg2
-    import hashlib
-
     # Load environment variables from .env file
     load_dotenv()
 
@@ -224,33 +249,34 @@ def send_individual_email(name, email):
         image.add_header("Content-Disposition", "inline", filename=os.path.basename(qr_ticket))
         msg.attach(image)
 
-    # Attach PDF File
-    pdf_file_path = "guidelines_c.pdf"
+    # # Attach PDF File
+    # pdf_file_path = "guidelines_c.pdf"
 
-    with open(pdf_file_path, "rb") as pdf_file:
-        pdf_attachment = MIMEApplication(pdf_file.read())
-        pdf_attachment.add_header("Content-Disposition", "attachment", filename="Guidelines.pdf")
-        msg.attach(pdf_attachment)
+    # with open(pdf_file_path, "rb") as pdf_file:
+    #     pdf_attachment = MIMEApplication(pdf_file.read())
+    #     pdf_attachment.add_header("Content-Disposition", "attachment", filename="Guidelines.pdf")
+    #     msg.attach(pdf_attachment)
 
     # Send email
     email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
     email_sender.send_email(email, msg)
-    email_sender.close()
-    print(f"Mail sent to {email}")
-    cur.execute(f"UPDATE {table_name} SET comment = %s WHERE email = %s", ("Mail Sent", email))
 
     # Close the cursor and the connection
     cur.close()
     conn.close()
+    print(f"Email sent to {email}")
 
-# If executed as a script, run the individual email sending logic
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Send an individual email if name and email are provided, otherwise send bulk emails.")
-    parser.add_argument("--name", type=str, help="Recipient's name for individual email")
-    parser.add_argument("--email", type=str, help="Recipient's email address for individual email")
+    parser = argparse.ArgumentParser(description="Send bulk emails or individual email.")
+    parser.add_argument("--send_bulk", action="store_true", help="Send bulk emails.")
+    parser.add_argument("--name", type=str, help="Recipient name for individual email.")
+    parser.add_argument("--email", type=str, help="Recipient email for individual email.")
+
     args = parser.parse_args()
 
-    if args.name and args.email:
+    if args.send_bulk:
+        send_bulk_emails()
+    elif args.name and args.email:
         send_individual_email(args.name, args.email)
     else:
-        send_bulk_emails()
+        print("Please specify either --send_bulk or both --name and --email.")
