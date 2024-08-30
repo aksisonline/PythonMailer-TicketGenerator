@@ -14,6 +14,7 @@ from ssh_tunnel_manager import SSHTunnelManager
 from variables_mapping import column_mapping
 from qr_generator import generate_qr_code
 from ticket_editor import qr_barbie
+from uid_generator import encrypter
 import logging
 from tqdm import tqdm
 
@@ -65,7 +66,7 @@ def send_email_to_recipient(recipient_data, template, conn, cur, sent_emails):
     
     try:
         # Encrypt recipient_uniqueID using SHA-256
-        hash_data = recipient_data["recipient_uniqueID"]
+        hash_data = encrypter(recipient_data["recipient_email"])
 
         # Update the 'hash_data' column in the specified table
         cur.execute(f"UPDATE {table_name} SET hash_data = %s WHERE email = %s", (hash_data, recipient_data["recipient_email"]))
@@ -207,7 +208,7 @@ def send_individual_email(name, email):
     cur = conn.cursor()
 
     # Encrypt recipient_email using SHA-256
-    hash_data = hashlib.sha256(email.encode()).hexdigest()
+    hash_data = encrypter(email)
 
     # Insert a new row into the database
     cur.execute(f"INSERT INTO {table_name} (name, email, hash_data) VALUES (%s, %s, %s)", (name, email, hash_data))
