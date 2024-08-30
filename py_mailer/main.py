@@ -91,7 +91,7 @@ def send_email_to_recipient(recipient_data, template, conn, cur, sent_emails):
         # Attach the QR code image as File
         with open(qr_ticket, "rb") as f:
             qr_code = MIMEImage(f.read())
-            qr_code.add_header("Content-Disposition", "attachment", filename=f"KK_Ticket_{recipient_data['recipient_name']}.png")
+            qr_code.add_header("Content-Disposition", "attachment", filename=f"Esp_Ticket_{recipient_data['recipient_name']}.png")
             msg.attach(qr_code)
 
         # Attach the image as Embed
