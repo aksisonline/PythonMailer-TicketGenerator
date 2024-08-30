@@ -17,6 +17,7 @@ from ticket_editor import qr_barbie
 from uid_generator import encrypter
 import logging
 from tqdm import tqdm
+from halo import Halo
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,7 +66,7 @@ def send_email_to_recipient(recipient_data, template, conn, cur, sent_emails):
     email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
     
     try:
-        # Encrypt recipient_uniqueID using SHA-256
+        # Encrypt email using encrypter.py
         hash_data = encrypter(recipient_data["recipient_email"])
 
         # Update the 'hash_data' column in the specified table
@@ -239,7 +240,7 @@ def send_individual_email(name, email):
     # Attach the QR code image as File
     with open(qr_ticket, "rb") as f:
         qr_code = MIMEImage(f.read())
-        qr_code.add_header("Content-Disposition", "attachment", filename=f"KK_Ticket_{name}.png")
+        qr_code.add_header("Content-Disposition", "attachment", filename=f"Esp_Ticket_{name}.png")
         msg.attach(qr_code)
 
     # Attach the image as Embed
@@ -259,8 +260,9 @@ def send_individual_email(name, email):
     #     msg.attach(pdf_attachment)
 
     # Send email
-    email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
-    email_sender.send_email(email, msg)
+    with Halo(text='Sending email...', spinner='dots'):
+        email_sender = EmailSender(smtp_server, smtp_port, sender_email, sender_password)
+        email_sender.send_email(email, msg)
 
     # Close the cursor and the connection
     cur.close()
